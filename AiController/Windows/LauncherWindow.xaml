@@ -1,0 +1,25 @@
+<Window x:Class="AiController.Windows.LauncherWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{StaticResource PanelWindowStyle}"
+        Title="AI Controller Launcher"
+        Width="720" Height="460"
+        WindowStartupLocation="CenterScreen">
+    <Border Style="{StaticResource PanelBorderStyle}">
+        <DockPanel>
+            <TextBox x:Name="SearchBox"
+                     DockPanel.Dock="Top"
+                     Style="{StaticResource AccentTextBoxStyle}"
+                     Margin="0,0,0,12"
+                     TextChanged="SearchBox_TextChanged"
+                     PreviewKeyDown="SearchBox_PreviewKeyDown" />
+            <ListBox x:Name="ResultsList"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Foreground="{StaticResource TextBrush}"
+                     FontFamily="Consolas"
+                     FontSize="14"
+                     MouseDoubleClick="ResultsList_MouseDoubleClick" />
+        </DockPanel>
+    </Border>
+</Window>

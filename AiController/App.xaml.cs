@@ -1,47 +1,63 @@
 using System.Windows;
 using AiController.Models;
 using AiController.Services;
+using AiController.Windows;
 
 namespace AiController;
 
 /// <summary>
-/// Phase 1 entry point: wires ControllerInputService to VoiceDictationService
-/// and InputInjector, no UI yet. LauncherWindow, OnScreenKeyboardWindow,
-/// SettingsWindow, a real tray icon, and autostart are Phase 2 -- deferred so
-/// this pass can focus on proving the core input pipeline (the actual
-/// technical risk) rather than UI that has no runtime to verify from here
-/// anyway. See the plan for the phase boundary.
+/// Phase 2 entry point: adds the launcher, on-screen keyboard, settings
+/// window, tray icon, and autostart on top of Phase 1's core input
+/// pipeline (controller reading, injection, voice dictation).
 /// </summary>
-public partial class App : Application
+public partial class App : System.Windows.Application
 {
     private ControllerInputService? _controllerService;
     private VoiceDictationService? _voiceService;
+    private TrayIconHost? _trayIcon;
+    private OnScreenKeyboardWindow? _keyboardWindow;
+    private LauncherWindow? _launcherWindow;
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
 
-        var profile = new ControllerProfile();
+        var profile = ProfileStore.Load();
         _voiceService = new VoiceDictationService(() => InputInjector.ActiveWindow());
-        // Phase 2: surface this in the UI (a toast/tray balloon) instead of a
-        // debug write -- for now, just guarantee it's never silently dropped.
         _voiceService.DictationFailed += ex => System.Diagnostics.Debug.WriteLine($"Dictation failed: {ex.Message}");
+
+        _keyboardWindow = new OnScreenKeyboardWindow();
+        _trayIcon = new TrayIconHost(profile);
 
         _controllerService = new ControllerInputService(profile, action =>
         {
-            switch (action.Type)
+            // ControllerInputService.Poll runs on a System.Threading.Timer
+            // callback thread, not the WPF dispatcher thread -- every action
+            // here that touches a Window has to be marshalled back via
+            // Dispatcher.Invoke, or WPF throws on the cross-thread access.
+            Dispatcher.Invoke(() =>
             {
-                case ActionType.VoiceTrigger:
-                    _voiceService.Toggle();
-                    break;
-                case ActionType.MouseClick:
-                    InputInjector.GuardedClick(InputInjector.ActiveWindow());
-                    break;
-                case ActionType.ShowKeyboard:
-                case ActionType.LaunchApp:
-                    // Phase 2: OnScreenKeyboardWindow / LauncherWindow don't exist yet.
-                    break;
-            }
+                switch (action.Type)
+                {
+                    case ActionType.VoiceTrigger:
+                        _voiceService.Toggle();
+                        break;
+                    case ActionType.MouseClick:
+                        InputInjector.GuardedClick(InputInjector.ActiveWindow());
+                        break;
+                    case ActionType.ShowKeyboard:
+                        _keyboardWindow!.Toggle();
+                        break;
+                    case ActionType.LaunchApp:
+                        if (_launcherWindow == null || !_launcherWindow.IsVisible)
+                        {
+                            _launcherWindow = new LauncherWindow();
+                            _launcherWindow.Show();
+                            _launcherWindow.Activate();
+                        }
+                        break;
+                }
+            });
         });
     }
 
@@ -49,6 +65,7 @@ public partial class App : Application
     {
         _controllerService?.Dispose();
         _voiceService?.Dispose();
+        _trayIcon?.Dispose();
         base.OnExit(e);
     }
 }

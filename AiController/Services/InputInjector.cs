@@ -153,6 +153,50 @@ public static class InputInjector
         };
     }
 
+    private static INPUT VirtualKeyInput(ushort vk, bool keyUp)
+    {
+        return new INPUT
+        {
+            type = INPUT_KEYBOARD,
+            U = new InputUnion
+            {
+                ki = new KEYBDINPUT
+                {
+                    wVk = vk,
+                    wScan = 0,
+                    dwFlags = keyUp ? KEYEVENTF_KEYUP : 0,
+                    time = 0,
+                    dwExtraInfo = IntPtr.Zero,
+                }
+            }
+        };
+    }
+
+    /// <summary>
+    /// Send a named key by virtual-key code (Backspace, Enter, arrows, etc.)
+    /// -- the equivalent of xdotool key, as opposed to GuardedType's
+    /// equivalent of xdotool type for literal Unicode text. Optionally holds
+    /// modifier virtual-key codes down for the duration (e.g. VK_SHIFT for a
+    /// shifted arrow-key selection), mirroring send()'s ctrl/alt handling on
+    /// the Linux/slide_keyboard.py build.
+    /// </summary>
+    public static void GuardedKey(IntPtr target, ushort vk, IEnumerable<ushort>? modifiers = null)
+    {
+        if (!EnsureForeground(target))
+            throw new FocusLostException($"could not focus {target} before key {vk}");
+
+        var mods = modifiers?.ToList() ?? new List<ushort>();
+        var inputs = new List<INPUT>();
+        foreach (var m in mods) inputs.Add(VirtualKeyInput(m, keyUp: false));
+        inputs.Add(VirtualKeyInput(vk, keyUp: false));
+        inputs.Add(VirtualKeyInput(vk, keyUp: true));
+        for (int i = mods.Count - 1; i >= 0; i--) inputs.Add(VirtualKeyInput(mods[i], keyUp: true));
+        SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf<INPUT>());
+
+        if (!FocusAcceptable(GetForegroundWindow(), target))
+            throw new FocusLostException($"focus left {target} during key {vk}");
+    }
+
     /// <summary>Left mouse click at the current cursor position, verified the same way as GuardedType.</summary>
     public static void GuardedClick(IntPtr target)
     {

@@ -1,0 +1,85 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        Shared dark/orange palette: same #FF6A00 accent and rgba(13,13,18)
+        panel background as ~/ai-controller/config/rofi-ai-controller.rasi
+        and slide_keyboard.py's CSS on the Linux build. No code or runtime is
+        shared between the platforms (there can't be, see the Windows repo's
+        STORE_COMPLIANCE.md and the plan doc for why), but there's no reason
+        the "AI Controller" brand should look like a different product on
+        each OS.
+    -->
+    <Color x:Key="AccentColor">#FF6A00</Color>
+    <Color x:Key="PanelBgColor">#0D0D12</Color>
+    <Color x:Key="PanelAltBgColor">#1A1A20</Color>
+    <Color x:Key="BorderColor">#3A3A44</Color>
+    <Color x:Key="TextColor">#E8E8E8</Color>
+    <Color x:Key="TextMutedColor">#8A8A92</Color>
+
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
+    <SolidColorBrush x:Key="PanelBgBrush" Color="{StaticResource PanelBgColor}" Opacity="0.96" />
+    <SolidColorBrush x:Key="PanelAltBgBrush" Color="{StaticResource PanelAltBgColor}" Opacity="0.9" />
+    <SolidColorBrush x:Key="BorderBrush2" Color="{StaticResource BorderColor}" />
+    <SolidColorBrush x:Key="TextBrush" Color="{StaticResource TextColor}" />
+    <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMutedColor}" />
+
+    <Style x:Key="PanelWindowStyle" TargetType="Window">
+        <Setter Property="WindowStyle" Value="None" />
+        <Setter Property="AllowsTransparency" Value="True" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="FontFamily" Value="Consolas" />
+        <Setter Property="ShowInTaskbar" Value="False" />
+        <Setter Property="Topmost" Value="True" />
+    </Style>
+
+    <Style x:Key="PanelBorderStyle" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource PanelBgBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+        <Setter Property="BorderThickness" Value="2" />
+        <Setter Property="CornerRadius" Value="16" />
+        <Setter Property="Padding" Value="16" />
+    </Style>
+
+    <Style x:Key="KeyButtonStyle" TargetType="Button">
+        <Setter Property="Background" Value="#23232B" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush2}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Margin" Value="2" />
+        <Setter Property="Padding" Value="6" />
+        <Setter Property="FontFamily" Value="Consolas" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="MinWidth" Value="36" />
+        <Setter Property="MinHeight" Value="36" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="6">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Background" Value="#2F2F3A" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="AccentTextBoxStyle" TargetType="TextBox">
+        <Setter Property="Background" Value="{StaticResource PanelAltBgBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush2}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="8" />
+        <Setter Property="FontFamily" Value="Consolas" />
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="CaretBrush" Value="{StaticResource AccentBrush}" />
+    </Style>
+
+</ResourceDictionary>
