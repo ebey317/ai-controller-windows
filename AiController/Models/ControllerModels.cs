@@ -135,7 +135,7 @@ public class ControllerProfile
         [ControllerInput.ButtonA] = new MouseAction(MouseButton.Left, MouseActionKind.Click),
         [ControllerInput.ButtonY] = new LaunchAction(""),
         [ControllerInput.RightTrigger] = new VoiceAction(VoiceMode.Toggle),
-        [ControllerInput.ButtonBack] = new KeyboardAction(KeyboardMode.Simple),
+        [ControllerInput.ButtonBack] = new KeyboardAction(KeyboardMode.Slide),
     };
 
     public ButtonAction Resolve(ControllerInput input) =>
