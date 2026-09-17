@@ -14,6 +14,10 @@
 
   <ItemGroup>
     <PackageReference Include="NAudio" Version="2.2.1" />
+    <!-- VoiceManager's first-cut TTS backend. System.Text.Json (used throughout
+         Services/ProfileStore.cs and the polymorphic ButtonAction hierarchy) needs
+         no explicit reference; it ships in the shared framework since .NET 5. -->
+    <PackageReference Include="System.Speech" Version="8.0.0" />
   </ItemGroup>
 
 </Project>

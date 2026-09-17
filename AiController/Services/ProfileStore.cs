@@ -11,6 +11,16 @@ namespace AiController.Services;
 /// SharedPreferences). Same idea, different storage mechanism: a plain
 /// file under %APPDATA% instead of Android's key-value store, since a
 /// desktop app has no equivalent of SharedPreferences.
+///
+/// W1 fix: ButtonAction is now a polymorphic hierarchy (see ControllerModels.cs)
+/// instead of a flat enum+string record, so a saved KeyAction/MouseAction/
+/// LaunchAction round-trips with all of its fields intact instead of losing
+/// everything but a bare type tag. System.Text.Json resolves the concrete
+/// subtype from the [JsonDerivedType] "type" discriminator automatically --
+/// no hand-rolled converter needed.
+///
+/// Profiles are named (see ContextSwitcher: "desktop", "browser", "iptv") so
+/// each context keeps its own independent mapping.
 /// </summary>
 public static class ProfileStore
 {
@@ -20,18 +30,14 @@ public static class ProfileStore
         Converters = { new JsonStringEnumConverter() },
     };
 
-    private static string ConfigDir => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AiController");
-
-    private static string ProfilePath => Path.Combine(ConfigDir, "profile.json");
-
-    public static ControllerProfile Load()
+    public static ControllerProfile Load(string name = "profile")
     {
         try
         {
-            if (File.Exists(ProfilePath))
+            var path = AppPaths.ProfilePath(name);
+            if (File.Exists(path))
             {
-                var json = File.ReadAllText(ProfilePath);
+                var json = File.ReadAllText(path);
                 var mappings = JsonSerializer.Deserialize<Dictionary<ControllerInput, ButtonAction>>(json, JsonOptions);
                 if (mappings != null)
                 {
@@ -50,10 +56,10 @@ public static class ProfileStore
         return new ControllerProfile();
     }
 
-    public static void Save(ControllerProfile profile)
+    public static void Save(ControllerProfile profile, string name = "profile")
     {
-        Directory.CreateDirectory(ConfigDir);
+        AppPaths.EnsureExists();
         var json = JsonSerializer.Serialize(profile.Mappings, JsonOptions);
-        File.WriteAllText(ProfilePath, json);
+        File.WriteAllText(AppPaths.ProfilePath(name), json);
     }
 }

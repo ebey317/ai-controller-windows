@@ -16,6 +16,13 @@ namespace AiController.Services;
 /// native "subscribe to button events" API, so the standard pattern (used by
 /// essentially every XInput consumer on Windows) is to poll at a fixed
 /// interval and diff against the previous state to find press/release edges.
+///
+/// W4 fix: this used to only ever compute the pressed-edge mask
+/// (`buttons & ~prevButtons`) and never the released-edge mask
+/// (`prevButtons & ~buttons`), so nothing downstream could tell when a held
+/// button came back up. That's the one signal a hold-to-talk PTT flow needs
+/// (PttController.OnRelease) and this now fires it for every button and both
+/// analog triggers, not just presses.
 /// </summary>
 public sealed class ControllerInputService : IDisposable
 {
@@ -59,17 +66,24 @@ public sealed class ControllerInputService : IDisposable
 
     private const byte TRIGGER_THRESHOLD = 30; // XINPUT_GAMEPAD_TRIGGER_THRESHOLD
 
-    private readonly ControllerProfile _profile;
-    private readonly Action<ButtonAction> _onAction;
+    private readonly Action<ButtonAction> _onPress;
+    private readonly Action<ButtonAction> _onRelease;
+    private readonly DriftCalibrator _drift = new();
     private readonly System.Threading.Timer _timer;
     private ushort _prevButtons;
     private bool _prevLeftTrigger;
     private bool _prevRightTrigger;
 
-    public ControllerInputService(ControllerProfile profile, Action<ButtonAction> onAction)
+    /// <summary>The profile currently resolving button->action. Settable so
+    /// ContextSwitcher can hot-swap it when the foreground app's context changes,
+    /// without tearing down and recreating the whole polling loop.</summary>
+    public ControllerProfile ActiveProfile { get; set; }
+
+    public ControllerInputService(ControllerProfile initialProfile, Action<ButtonAction> onPress, Action<ButtonAction> onRelease)
     {
-        _profile = profile;
-        _onAction = onAction;
+        ActiveProfile = initialProfile;
+        _onPress = onPress;
+        _onRelease = onRelease;
         // ~60Hz poll, matching typical game-loop cadence for XInput consumers.
         _timer = new System.Threading.Timer(Poll, null, 0, 16);
     }
@@ -78,44 +92,66 @@ public sealed class ControllerInputService : IDisposable
     {
         if (XInputGetState(0, out var s) != 0) return; // 0 = ERROR_SUCCESS; nonzero = no controller connected
 
+        _drift.Observe(s.Gamepad.sThumbLX, s.Gamepad.sThumbLY);
+
         var buttons = s.Gamepad.wButtons;
         var pressed = (ushort)(buttons & ~_prevButtons); // edges that just went down
+        var released = (ushort)(_prevButtons & ~buttons); // edges that just came up
         _prevButtons = buttons;
 
-        DispatchIfPressed(pressed, A, ControllerInput.ButtonA);
-        DispatchIfPressed(pressed, B, ControllerInput.ButtonB);
-        DispatchIfPressed(pressed, X, ControllerInput.ButtonX);
-        DispatchIfPressed(pressed, Y, ControllerInput.ButtonY);
-        DispatchIfPressed(pressed, DPAD_UP, ControllerInput.DPadUp);
-        DispatchIfPressed(pressed, DPAD_DOWN, ControllerInput.DPadDown);
-        DispatchIfPressed(pressed, DPAD_LEFT, ControllerInput.DPadLeft);
-        DispatchIfPressed(pressed, DPAD_RIGHT, ControllerInput.DPadRight);
-        DispatchIfPressed(pressed, START, ControllerInput.ButtonStart);
-        DispatchIfPressed(pressed, BACK, ControllerInput.ButtonBack);
-        DispatchIfPressed(pressed, LEFT_SHOULDER, ControllerInput.LeftShoulder);
-        DispatchIfPressed(pressed, RIGHT_SHOULDER, ControllerInput.RightShoulder);
-        DispatchIfPressed(pressed, LEFT_THUMB, ControllerInput.LeftThumb);
-        DispatchIfPressed(pressed, RIGHT_THUMB, ControllerInput.RightThumb);
+        DispatchIfSet(pressed, A, ControllerInput.ButtonA, isPress: true);
+        DispatchIfSet(pressed, B, ControllerInput.ButtonB, isPress: true);
+        DispatchIfSet(pressed, X, ControllerInput.ButtonX, isPress: true);
+        DispatchIfSet(pressed, Y, ControllerInput.ButtonY, isPress: true);
+        DispatchIfSet(pressed, DPAD_UP, ControllerInput.DPadUp, isPress: true);
+        DispatchIfSet(pressed, DPAD_DOWN, ControllerInput.DPadDown, isPress: true);
+        DispatchIfSet(pressed, DPAD_LEFT, ControllerInput.DPadLeft, isPress: true);
+        DispatchIfSet(pressed, DPAD_RIGHT, ControllerInput.DPadRight, isPress: true);
+        DispatchIfSet(pressed, START, ControllerInput.ButtonStart, isPress: true);
+        DispatchIfSet(pressed, BACK, ControllerInput.ButtonBack, isPress: true);
+        DispatchIfSet(pressed, LEFT_SHOULDER, ControllerInput.LeftShoulder, isPress: true);
+        DispatchIfSet(pressed, RIGHT_SHOULDER, ControllerInput.RightShoulder, isPress: true);
+        DispatchIfSet(pressed, LEFT_THUMB, ControllerInput.LeftThumb, isPress: true);
+        DispatchIfSet(pressed, RIGHT_THUMB, ControllerInput.RightThumb, isPress: true);
+
+        DispatchIfSet(released, A, ControllerInput.ButtonA, isPress: false);
+        DispatchIfSet(released, B, ControllerInput.ButtonB, isPress: false);
+        DispatchIfSet(released, X, ControllerInput.ButtonX, isPress: false);
+        DispatchIfSet(released, Y, ControllerInput.ButtonY, isPress: false);
+        DispatchIfSet(released, DPAD_UP, ControllerInput.DPadUp, isPress: false);
+        DispatchIfSet(released, DPAD_DOWN, ControllerInput.DPadDown, isPress: false);
+        DispatchIfSet(released, DPAD_LEFT, ControllerInput.DPadLeft, isPress: false);
+        DispatchIfSet(released, DPAD_RIGHT, ControllerInput.DPadRight, isPress: false);
+        DispatchIfSet(released, START, ControllerInput.ButtonStart, isPress: false);
+        DispatchIfSet(released, BACK, ControllerInput.ButtonBack, isPress: false);
+        DispatchIfSet(released, LEFT_SHOULDER, ControllerInput.LeftShoulder, isPress: false);
+        DispatchIfSet(released, RIGHT_SHOULDER, ControllerInput.RightShoulder, isPress: false);
+        DispatchIfSet(released, LEFT_THUMB, ControllerInput.LeftThumb, isPress: false);
+        DispatchIfSet(released, RIGHT_THUMB, ControllerInput.RightThumb, isPress: false);
 
         // Triggers are analog (0-255), not bitmask buttons -- edge-detect
         // against a threshold the same way XInput's own sample code does.
         bool leftTrigger = s.Gamepad.bLeftTrigger > TRIGGER_THRESHOLD;
         bool rightTrigger = s.Gamepad.bRightTrigger > TRIGGER_THRESHOLD;
-        if (leftTrigger && !_prevLeftTrigger) Dispatch(ControllerInput.LeftTrigger);
-        if (rightTrigger && !_prevRightTrigger) Dispatch(ControllerInput.RightTrigger);
+        if (leftTrigger && !_prevLeftTrigger) Dispatch(ControllerInput.LeftTrigger, isPress: true);
+        if (!leftTrigger && _prevLeftTrigger) Dispatch(ControllerInput.LeftTrigger, isPress: false);
+        if (rightTrigger && !_prevRightTrigger) Dispatch(ControllerInput.RightTrigger, isPress: true);
+        if (!rightTrigger && _prevRightTrigger) Dispatch(ControllerInput.RightTrigger, isPress: false);
         _prevLeftTrigger = leftTrigger;
         _prevRightTrigger = rightTrigger;
     }
 
-    private void DispatchIfPressed(ushort pressedMask, ushort bit, ControllerInput input)
+    private void DispatchIfSet(ushort edgeMask, ushort bit, ControllerInput input, bool isPress)
     {
-        if ((pressedMask & bit) != 0) Dispatch(input);
+        if ((edgeMask & bit) != 0) Dispatch(input, isPress);
     }
 
-    private void Dispatch(ControllerInput input)
+    private void Dispatch(ControllerInput input, bool isPress)
     {
-        var action = _profile.Resolve(input);
-        if (action.Type != ActionType.None) _onAction(action);
+        var action = ActiveProfile.Resolve(input);
+        if (action is NullAction) return;
+        if (isPress) _onPress(action);
+        else _onRelease(action);
     }
 
     public void Dispose() => _timer.Dispose();

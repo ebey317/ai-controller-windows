@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using AiController.Models;
 
 namespace AiController.Services;
 
@@ -23,6 +24,10 @@ public static class InputInjector
     private const uint KEYEVENTF_KEYUP = 0x0002;
     private const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
     private const uint MOUSEEVENTF_LEFTUP = 0x0004;
+    private const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
+    private const uint MOUSEEVENTF_RIGHTUP = 0x0010;
+    private const uint MOUSEEVENTF_MIDDLEDOWN = 0x0020;
+    private const uint MOUSEEVENTF_MIDDLEUP = 0x0040;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct KEYBDINPUT
@@ -198,18 +203,43 @@ public static class InputInjector
     }
 
     /// <summary>Left mouse click at the current cursor position, verified the same way as GuardedType.</summary>
-    public static void GuardedClick(IntPtr target)
+    public static void GuardedClick(IntPtr target) => GuardedMouse(target, MouseButton.Left, MouseActionKind.Click);
+
+    /// <summary>Synthesize a mouse button press of the given kind (click, double-click,
+    /// down-only, up-only) at the current cursor position, verified the same way as
+    /// GuardedType. Backs MouseAction bindings (W1's polymorphic action hierarchy).</summary>
+    public static void GuardedMouse(IntPtr target, MouseButton button, MouseActionKind kind)
     {
         if (!EnsureForeground(target))
-            throw new FocusLostException($"could not focus {target} before click");
+            throw new FocusLostException($"could not focus {target} before mouse {button}/{kind}");
 
-        var down = new INPUT { type = INPUT_MOUSE, U = new InputUnion { mi = new MOUSEINPUT { dwFlags = MOUSEEVENTF_LEFTDOWN } } };
-        var up = new INPUT { type = INPUT_MOUSE, U = new InputUnion { mi = new MOUSEINPUT { dwFlags = MOUSEEVENTF_LEFTUP } } };
-        SendInput(2, new[] { down, up }, Marshal.SizeOf<INPUT>());
+        var (downFlag, upFlag) = button switch
+        {
+            MouseButton.Right => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
+            MouseButton.Middle => (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP),
+            _ => (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP),
+        };
+        var down = new INPUT { type = INPUT_MOUSE, U = new InputUnion { mi = new MOUSEINPUT { dwFlags = downFlag } } };
+        var up = new INPUT { type = INPUT_MOUSE, U = new InputUnion { mi = new MOUSEINPUT { dwFlags = upFlag } } };
+
+        var inputs = kind switch
+        {
+            MouseActionKind.Down => new[] { down },
+            MouseActionKind.Up => new[] { up },
+            MouseActionKind.DoubleClick => new[] { down, up, down, up },
+            _ => new[] { down, up },
+        };
+        SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
 
         if (!FocusAcceptable(GetForegroundWindow(), target))
-            throw new FocusLostException($"focus left {target} during click");
+            throw new FocusLostException($"focus left {target} during mouse {button}/{kind}");
     }
+
+    /// <summary>Resolve a stored key name (e.g. "Enter", "Tab", "A") to its Win32
+    /// virtual-key code via System.Windows.Forms.Keys, or 0 if unrecognized.
+    /// Backs KeyAction bindings (W1's polymorphic action hierarchy).</summary>
+    public static ushort ResolveVirtualKey(string keyText) =>
+        Enum.TryParse<System.Windows.Forms.Keys>(keyText, ignoreCase: true, out var key) ? (ushort)key : (ushort)0;
 
     public static IntPtr ActiveWindow() => GetForegroundWindow();
 }
