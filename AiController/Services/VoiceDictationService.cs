@@ -153,13 +153,33 @@ public sealed class VoiceDictationService : IDisposable
             var transcript = await TranscribeAsync(audioBytes, _transcribeCts.Token);
             if (!string.IsNullOrWhiteSpace(transcript))
             {
-                InputInjector.GuardedType(_getTargetWindow(), transcript);
+                // ptt_pynput.py parity: apply the active style mode to the raw
+                // transcript before typing it (_transform_text). PRO is a no-op.
+                var mode = LoadActiveMode();
+                var styled = TextStyles.Apply(transcript, mode);
+                InputInjector.GuardedType(_getTargetWindow(), styled);
             }
         }
         finally
         {
             try { File.Delete(wavPath); } catch (IOException) { /* best-effort cleanup */ }
         }
+    }
+
+    /// <summary>Reads the mode the SlideKeyboard toggled, same file ptt_pynput.py's
+    /// MODE_FILE expects (lowercase 'pro'/'bubbly'/'casual'/'bold'/'big').</summary>
+    private static TextStyleMode LoadActiveMode()
+    {
+        try
+        {
+            if (File.Exists(AppPaths.PttModePath))
+            {
+                var raw = File.ReadAllText(AppPaths.PttModePath).Trim();
+                if (Enum.TryParse<TextStyleMode>(raw, ignoreCase: true, out var mode)) return mode;
+            }
+        }
+        catch (IOException) { /* fall back to PRO */ }
+        return TextStyleMode.Pro;
     }
 
     /// <summary>Transcribe raw WAV bytes via Groq Whisper. Public so LocalHttpServer's

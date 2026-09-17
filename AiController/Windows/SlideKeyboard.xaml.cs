@@ -86,24 +86,50 @@ public partial class SlideKeyboard : Window
 
     private void BuildModeBar()
     {
+        // Mirrors slide_keyboard.py: a single mode-toggle button that cycles
+        // pro -> bubbly -> casual -> bold -> big, its label rendered in the
+        // actual style the mode applies (Linux's _mode_display_label). The
+        // internal values written to PttModePath stay the lowercase names
+        // ptt_pynput.py's MODE_FILE expects -- never the display labels.
         ModeBar.Children.Clear();
-        foreach (var mode in Enum.GetValues<TextStyleMode>())
+        var btn = new System.Windows.Controls.Button
         {
-            var btn = new System.Windows.Controls.Button
-            {
-                Content = mode.ToString().ToUpperInvariant(),
-                Style = (Style)FindResource("KeyButtonStyle"),
-            };
-            if (mode == _mode) btn.BorderThickness = new Thickness(3);
-            btn.Click += (_, _) =>
-            {
-                _mode = mode;
-                SaveMode();
-                BuildModeBar();
-            };
-            ModeBar.Children.Add(btn);
-        }
+            Content = ModeDisplayLabel(_mode),
+            Style = (Style)FindResource("KeyButtonStyle"),
+            FontSize = 16,
+            FontWeight = FontWeights.Bold,
+            MinWidth = 110,
+            MinHeight = 34,
+        };
+        btn.Click += (_, _) =>
+        {
+            _mode = NextMode(_mode);
+            SaveMode();
+            BuildModeBar();
+        };
+        ModeBar.Children.Add(btn);
     }
+
+    /// <summary>Cycle order for the single mode-toggle button -- slide_keyboard.py's _MODE_ORDER.</summary>
+    internal static TextStyleMode NextMode(TextStyleMode current)
+    {
+        var order = new[] { TextStyleMode.Pro, TextStyleMode.Bubbly, TextStyleMode.Casual, TextStyleMode.Bold, TextStyleMode.Big };
+        var idx = Array.IndexOf(order, current);
+        return order[(idx + 1) % order.Length];
+    }
+
+    /// <summary>Display labels -- slide_keyboard.py's _mode_display_label:
+    /// each label is rendered in the style the mode applies, so the font
+    /// itself says what the mode does. PRO stays plain ASCII on purpose.</summary>
+    internal static string ModeDisplayLabel(TextStyleMode mode) => mode switch
+    {
+        TextStyleMode.Pro => "PRO",
+        TextStyleMode.Bubbly => "✨ " + TextStyles.ToCursive("Cursive"),
+        TextStyleMode.Casual => "☕ casual",
+        TextStyleMode.Bold => TextStyles.ToBold("Bold"),
+        TextStyleMode.Big => TextStyles.ToOldEnglish("Old-E"),
+        _ => mode.ToString(),
+    };
 
     // ---- pinned snippets ----
 
