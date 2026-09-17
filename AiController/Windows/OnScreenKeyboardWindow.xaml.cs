@@ -15,50 +15,23 @@ namespace AiController.Windows;
 /// if it drifted. Same discipline, entirely new implementation -- nothing
 /// about GTK's set_accept_focus or X11 grabs applies here, but the
 /// *reasoning* for why this matters is identical.
+///
+/// W2 fix: ShowActivated="False" (set in the XAML) stops this window's own
+/// Show() from focusing it, but not every focus-stealing path -- the true
+/// Win32 fix is the WS_EX_NOACTIVATE extended style, applied via
+/// NativeWindowHelper once the window's handle exists (SourceInitialized).
+/// Deliberately no Owner is set, for the same reason (see NativeWindowHelper's
+/// doc comment).
 /// </summary>
 public partial class OnScreenKeyboardWindow : Window
 {
-    private const ushort VK_BACK = 0x08;
-    private const ushort VK_TAB = 0x09;
-    private const ushort VK_RETURN = 0x0D;
-    private const ushort VK_SHIFT = 0x10;
-    private const ushort VK_ESCAPE = 0x1B;
-    private const ushort VK_SPACE = 0x20;
-    private const ushort VK_LEFT = 0x25;
-    private const ushort VK_UP = 0x26;
-    private const ushort VK_RIGHT = 0x27;
-    private const ushort VK_DOWN = 0x28;
-
-    private static readonly Dictionary<string, ushort> SpecialKeys = new()
-    {
-        ["Esc"] = VK_ESCAPE, ["Bksp"] = VK_BACK, ["Tab"] = VK_TAB, ["Enter"] = VK_RETURN,
-        ["Space"] = VK_SPACE, ["Left"] = VK_LEFT, ["Right"] = VK_RIGHT, ["Up"] = VK_UP, ["Down"] = VK_DOWN,
-    };
-
-    private static readonly string[][] RowsLower =
-    {
-        new[] { "`", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "=", "Bksp" },
-        new[] { "Tab", "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "[", "]", "\\" },
-        new[] { "a", "s", "d", "f", "g", "h", "j", "k", "l", ";", "'", "Enter" },
-        new[] { "Shift", "z", "x", "c", "v", "b", "n", "m", ",", ".", "/", "Shift" },
-        new[] { "Esc", "Left", "Down", "Up", "Right", "Space" },
-    };
-
-    private static readonly string[][] RowsUpper =
-    {
-        new[] { "~", "!", "@", "#", "$", "%", "^", "&", "*", "(", ")", "_", "+", "Bksp" },
-        new[] { "Tab", "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "{", "}", "|" },
-        new[] { "A", "S", "D", "F", "G", "H", "J", "K", "L", ":", "\"", "Enter" },
-        new[] { "Shift", "Z", "X", "C", "V", "B", "N", "M", "<", ">", "?", "Shift" },
-        new[] { "Esc", "Left", "Down", "Up", "Right", "Space" },
-    };
-
     private IntPtr _focusTargetWindow;
     private bool _shiftOn;
 
     public OnScreenKeyboardWindow()
     {
         InitializeComponent();
+        SourceInitialized += (_, _) => NativeWindowHelper.SetNoActivate(this);
     }
 
     /// <summary>Call right before Show()/Visibility toggle -- snapshots the
@@ -86,7 +59,7 @@ public partial class OnScreenKeyboardWindow : Window
     private void BuildKeys()
     {
         KeyRows.Children.Clear();
-        foreach (var row in (_shiftOn ? RowsUpper : RowsLower))
+        foreach (var row in (_shiftOn ? KeyboardLayout.RowsUpper : KeyboardLayout.RowsLower))
         {
             var rowPanel = new StackPanel
             {
@@ -115,7 +88,7 @@ public partial class OnScreenKeyboardWindow : Window
 
         try
         {
-            if (SpecialKeys.TryGetValue(key, out var vk))
+            if (KeyboardLayout.SpecialKeys.TryGetValue(key, out var vk))
             {
                 InputInjector.GuardedKey(_focusTargetWindow, vk);
             }
