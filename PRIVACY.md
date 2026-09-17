@@ -23,16 +23,22 @@ against.
 
 ## What gets sent to a third party, and to whom
 
-When you use voice dictation, the audio you record is sent to **Groq**
-(`api.groq.com`), a third-party speech-to-text provider, for transcription via
-their Whisper API. This is the *only* data this app sends off your machine,
-and it only happens while you are actively dictating.
+When you use voice dictation, the audio you record **and your Groq API key**
+are sent to **Groq** (`api.groq.com`), a third-party speech-to-text provider,
+for transcription via their Whisper API. Your API key is sent as a standard
+Bearer-token Authorization header on every transcription request — the same
+way any Groq API client authenticates. Audio and your API key are the only
+data this app sends off your machine, and this only happens while you are
+actively dictating.
 
 - Audio is sent using your own Groq API key, which you provide in Settings.
   This app never ships or embeds a shared key.
-- The app does not retain a copy of your audio after the transcript is
-  returned; the temporary WAV file used for capture is deleted immediately
-  after the request completes (or fails).
+- The temporary WAV file used for capture is written to your OS temp
+  directory (e.g. `%TEMP%`) — not this app's `%APPDATA%` folder — and is
+  deleted on a best-effort basis immediately after the request completes (or
+  fails). That deletion can fail (for example if the file is still locked),
+  and in rare cases the file can be left behind if the app is closed mid-
+  capture; this app does not guarantee the temp file is always removed.
 - No audio, transcript, or usage data is sent to the developer of this app,
   or to any service other than Groq.
 - What Groq itself does with the audio it receives is governed by
@@ -51,9 +57,13 @@ Settings toggle) to be asked again.
 
 The app runs a small HTTP server on `127.0.0.1:7741` (localhost only — not
 reachable from any other device) that exposes `/voice` (transcribe uploaded
-audio) and `/speak` (speak text aloud). Nothing outside your machine can ever
-reach this server; it exists so other local tools you run can use the same
-voice pipeline this app uses for its own controller-driven dictation.
+audio) and `/speak` (speak text aloud). Both endpoints require a random
+bearer token generated fresh each time the app starts, sent as an
+`Authorization: Bearer <token>` header — only local clients that already have
+that token can use them. Nothing outside your machine can ever reach this
+server, and even another process on the same machine cannot use it without
+that token; it exists so other authenticated local tools you run can use the
+same voice pipeline this app uses for its own controller-driven dictation.
 
 ## What is stored on disk, and where
 

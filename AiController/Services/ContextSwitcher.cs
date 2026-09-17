@@ -28,17 +28,26 @@ public sealed class ContextSwitcher : IDisposable
     private static readonly HashSet<string> IptvProcesses = new(StringComparer.OrdinalIgnoreCase)
         { "mpv", "vlc", "mpc-hc", "mpc-hc64" };
 
-    private readonly System.Threading.Timer _timer;
+    private System.Threading.Timer? _timer;
     private readonly Dictionary<ProfileContext, Models.ControllerProfile> _profiles;
     private ProfileContext _current = ProfileContext.Desktop;
 
     /// <summary>Raised whenever the classified context changes, carrying the
-    /// profile that should now become active.</summary>
+    /// profile that should now become active. Always raised on the WPF dispatcher
+    /// thread (see RaiseContextChanged), never directly from the timer's threadpool
+    /// thread, since subscribers like LegendOverlay touch WPF objects.</summary>
     public event Action<Models.ControllerProfile>? ContextChanged;
 
     public ContextSwitcher(Dictionary<ProfileContext, Models.ControllerProfile> profiles)
     {
         _profiles = profiles;
+    }
+
+    /// <summary>Starts the polling timer. Split out from the constructor so callers
+    /// can subscribe to ContextChanged first -- constructing and starting the timer
+    /// together risked the very first tick firing before anyone had subscribed.</summary>
+    public void Start()
+    {
         // 500ms is plenty responsive for "I alt-tabbed to a browser" without
         // burning a thread the way a 16ms XInput-style poll would for this.
         _timer = new System.Threading.Timer(Poll, null, 0, 500);
@@ -50,7 +59,18 @@ public sealed class ContextSwitcher : IDisposable
         if (context == _current) return;
         _current = context;
         if (_profiles.TryGetValue(context, out var profile))
-            ContextChanged?.Invoke(profile);
+            RaiseContextChanged(profile);
+    }
+
+    /// <summary>Poll() runs on a System.Threading.Timer threadpool thread, but
+    /// ContextChanged subscribers (LegendOverlay etc.) are WPF objects that must
+    /// only be touched from the dispatcher thread. Falls back to a direct invoke
+    /// when there's no Application (e.g. unit tests).</summary>
+    private void RaiseContextChanged(Models.ControllerProfile profile)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher != null) dispatcher.Invoke(() => ContextChanged?.Invoke(profile));
+        else ContextChanged?.Invoke(profile);
     }
 
     private static ProfileContext ClassifyForegroundWindow()
@@ -74,5 +94,5 @@ public sealed class ContextSwitcher : IDisposable
         return ProfileContext.Desktop;
     }
 
-    public void Dispose() => _timer.Dispose();
+    public void Dispose() => _timer?.Dispose();
 }

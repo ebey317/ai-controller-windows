@@ -41,7 +41,7 @@ public static class ProfileStore
                 var mappings = JsonSerializer.Deserialize<Dictionary<ControllerInput, ButtonAction>>(json, JsonOptions);
                 if (mappings != null)
                 {
-                    var profile = new ControllerProfile();
+                    var profile = new ControllerProfile { Name = name };
                     profile.Mappings.Clear();
                     foreach (var (key, value) in mappings) profile.Mappings[key] = value;
                     return profile;
@@ -53,7 +53,7 @@ public static class ProfileStore
             // Corrupt or unreadable profile -- fall back to defaults rather
             // than crash the app over a settings file.
         }
-        return new ControllerProfile();
+        return new ControllerProfile { Name = name };
     }
 
     public static void Save(ControllerProfile profile, string name = "profile")

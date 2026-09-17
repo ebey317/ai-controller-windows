@@ -21,7 +21,15 @@ public partial class ConsentGateWindow : Window
 
     private void Accept_Click(object sender, RoutedEventArgs e)
     {
-        ConsentGate.GrantConsent();
+        if (!ConsentGate.GrantConsent())
+        {
+            System.Windows.MessageBox.Show(this,
+                "Could not save your consent choice to disk. Check that AI Controller " +
+                "can write to %APPDATA%\\AI Controller, then try again.",
+                "AI Controller — Voice Privacy",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
         Accepted = true;
         Close();
     }

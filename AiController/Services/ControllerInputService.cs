@@ -70,6 +70,12 @@ public sealed class ControllerInputService : IDisposable
     private readonly Action<ButtonAction> _onRelease;
     private readonly DriftCalibrator _drift = new();
     private readonly System.Threading.Timer _timer;
+
+    // F3 fix: Dispatch used to re-resolve ActiveProfile on release, so a
+    // profile/context switch between a press and its release fired whatever the
+    // NEW profile mapped that input to, not what was actually pressed. The
+    // resolved action is now latched on press and reused on release.
+    private readonly Dictionary<ControllerInput, ButtonAction> _latchedActions = new();
     private ushort _prevButtons;
     private bool _prevLeftTrigger;
     private bool _prevRightTrigger;
@@ -88,11 +94,22 @@ public sealed class ControllerInputService : IDisposable
         _timer = new System.Threading.Timer(Poll, null, 0, 16);
     }
 
+    // Cursor speed for the left-stick-as-mouse feature DriftCalibrator's Correct()
+    // exists to serve -- pixels per poll tick (~60Hz) at full deflection.
+    private const double CursorSpeedPxPerTick = 8.0;
+
     private void Poll(object? state)
     {
         if (XInputGetState(0, out var s) != 0) return; // 0 = ERROR_SUCCESS; nonzero = no controller connected
 
+        // F6 fix: Observe() fed the calibrator's learned-center history, but
+        // nothing ever called Correct() to actually use it -- the left stick
+        // could never move the cursor at all. Observe-then-correct, in that
+        // order, so the correction always reflects samples already folded in
+        // and never a sample from the future.
         _drift.Observe(s.Gamepad.sThumbLX, s.Gamepad.sThumbLY);
+        var (cx, cy) = _drift.Correct(s.Gamepad.sThumbLX, s.Gamepad.sThumbLY);
+        if (cx != 0 || cy != 0) MoveCursorBy(cx, cy);
 
         var buttons = s.Gamepad.wButtons;
         var pressed = (ushort)(buttons & ~_prevButtons); // edges that just went down
@@ -141,6 +158,16 @@ public sealed class ControllerInputService : IDisposable
         _prevRightTrigger = rightTrigger;
     }
 
+    private static void MoveCursorBy(double correctedX, double correctedY)
+    {
+        var pos = System.Windows.Forms.Cursor.Position;
+        var dx = (int)Math.Round(correctedX * CursorSpeedPxPerTick);
+        // Screen Y+ is down; XInput's stick Y+ is "pushed up" -- invert to match.
+        var dy = (int)Math.Round(-correctedY * CursorSpeedPxPerTick);
+        if (dx == 0 && dy == 0) return;
+        System.Windows.Forms.Cursor.Position = new System.Drawing.Point(pos.X + dx, pos.Y + dy);
+    }
+
     private void DispatchIfSet(ushort edgeMask, ushort bit, ControllerInput input, bool isPress)
     {
         if ((edgeMask & bit) != 0) Dispatch(input, isPress);
@@ -148,10 +175,22 @@ public sealed class ControllerInputService : IDisposable
 
     private void Dispatch(ControllerInput input, bool isPress)
     {
-        var action = ActiveProfile.Resolve(input);
-        if (action is NullAction) return;
-        if (isPress) _onPress(action);
-        else _onRelease(action);
+        if (isPress)
+        {
+            var action = ActiveProfile.Resolve(input);
+            if (action is NullAction) return;
+            _latchedActions[input] = action;
+            _onPress(action);
+        }
+        else
+        {
+            // Reuse whatever was latched on the matching press -- never re-resolve
+            // against whatever profile happens to be active now. If nothing was
+            // latched (e.g. the press resolved to NullAction, or press happened
+            // before this service started), there is nothing to release.
+            if (!_latchedActions.Remove(input, out var action)) return;
+            _onRelease(action);
+        }
     }
 
     public void Dispose() => _timer.Dispose();

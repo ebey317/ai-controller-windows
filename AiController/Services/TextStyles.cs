@@ -281,4 +281,18 @@ public static class TextStyles
             _ => text,
         };
     }
+
+    /// <summary>Deterministic font-mapping ONLY -- no keyword-emoji insertion, no
+    /// CasualEmojiBoost. Backs single-keystroke injection (SlideKeyboard.InjectKeyPressed):
+    /// running the full emoji pipeline per key would append a random emoji to every
+    /// letter typed in CASUAL mode instead of once per dictated phrase. Pinned
+    /// snippets and voice transcripts are whole-phrase text and keep using Apply.</summary>
+    public static string ApplyGlyphs(string text, TextStyleMode mode) => mode switch
+    {
+        TextStyleMode.Bubbly => ToCursive(text),
+        TextStyleMode.Casual => text.ToLowerInvariant(),
+        TextStyleMode.Bold => ToBold(text),
+        TextStyleMode.Big => ToOldEnglish(text),
+        _ => text,
+    };
 }

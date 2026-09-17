@@ -25,8 +25,13 @@ public partial class SettingsWindow : Window
     private enum ActionKind { None, Key, Mouse, Voice, Keyboard, Launch }
 
     private readonly ControllerProfile _profile;
+    private readonly Dictionary<ControllerInput, ButtonAction> _originalActions = new();
     private readonly Dictionary<ControllerInput, ComboBox> _mappingCombos = new();
     private readonly Dictionary<ControllerInput, TextBox> _mappingParams = new();
+    private readonly Dictionary<ControllerInput, ComboBox> _mouseButtonCombos = new();
+    private readonly Dictionary<ControllerInput, ComboBox> _mouseKindCombos = new();
+    private readonly Dictionary<ControllerInput, ComboBox> _voiceModeCombos = new();
+    private readonly Dictionary<ControllerInput, ComboBox> _keyboardModeCombos = new();
 
     public SettingsWindow(ControllerProfile profile)
     {
@@ -56,11 +61,16 @@ public partial class SettingsWindow : Window
         foreach (var input in Enum.GetValues<ControllerInput>())
         {
             var currentAction = _profile.Resolve(input);
+            _originalActions[input] = currentAction;
 
             var row = new Grid { Margin = new Thickness(0, 2, 0, 2) };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var label = new TextBlock { Text = input.ToString(), Foreground = (System.Windows.Media.Brush)FindResource("TextBrush"), VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(label, 0);
@@ -72,12 +82,44 @@ public partial class SettingsWindow : Window
             var param = new TextBox { Width = 100, Margin = new Thickness(6, 0, 0, 0), Text = ParamOf(currentAction) };
             Grid.SetColumn(param, 2);
 
+            // F11 fix: one combo per kind-specific value a row's action can carry
+            // that ISN'T the free-text param above -- mouse button, mouse action
+            // kind, voice mode, keyboard mode. Always present (not just when that
+            // kind is selected) so a kind switch has something to read values from.
+            var mouseAction = currentAction as MouseAction;
+            var voiceAction = currentAction as VoiceAction;
+            var keyboardAction = currentAction as KeyboardAction;
+
+            var mouseButtonCombo = new ComboBox { ItemsSource = Enum.GetValues<MouseButton>(), Width = 70, Margin = new Thickness(6, 0, 0, 0) };
+            mouseButtonCombo.SelectedItem = mouseAction?.Button ?? MouseButton.Left;
+            Grid.SetColumn(mouseButtonCombo, 3);
+
+            var mouseKindCombo = new ComboBox { ItemsSource = Enum.GetValues<MouseActionKind>(), Width = 90, Margin = new Thickness(6, 0, 0, 0) };
+            mouseKindCombo.SelectedItem = mouseAction?.Kind ?? MouseActionKind.Click;
+            Grid.SetColumn(mouseKindCombo, 4);
+
+            var voiceModeCombo = new ComboBox { ItemsSource = Enum.GetValues<VoiceMode>(), Width = 100, Margin = new Thickness(6, 0, 0, 0) };
+            voiceModeCombo.SelectedItem = voiceAction?.Mode ?? VoiceMode.Toggle;
+            Grid.SetColumn(voiceModeCombo, 5);
+
+            var keyboardModeCombo = new ComboBox { ItemsSource = Enum.GetValues<KeyboardMode>(), Width = 90, Margin = new Thickness(6, 0, 0, 0) };
+            keyboardModeCombo.SelectedItem = keyboardAction?.Mode ?? KeyboardMode.Simple;
+            Grid.SetColumn(keyboardModeCombo, 6);
+
             _mappingCombos[input] = combo;
             _mappingParams[input] = param;
+            _mouseButtonCombos[input] = mouseButtonCombo;
+            _mouseKindCombos[input] = mouseKindCombo;
+            _voiceModeCombos[input] = voiceModeCombo;
+            _keyboardModeCombos[input] = keyboardModeCombo;
 
             row.Children.Add(label);
             row.Children.Add(combo);
             row.Children.Add(param);
+            row.Children.Add(mouseButtonCombo);
+            row.Children.Add(mouseKindCombo);
+            row.Children.Add(voiceModeCombo);
+            row.Children.Add(keyboardModeCombo);
             rows.Children.Add(row);
         }
         MappingsList.Content = rows;
@@ -125,18 +167,47 @@ public partial class SettingsWindow : Window
         {
             var kind = (ActionKind)combo.SelectedItem;
             var param = _mappingParams[input].Text.Trim();
-            ButtonAction action = kind switch
+            var mouseButton = _mouseButtonCombos[input].SelectedItem is MouseButton mb ? mb : MouseButton.Left;
+            var mouseKind = _mouseKindCombos[input].SelectedItem is MouseActionKind mk ? mk : MouseActionKind.Click;
+            var voiceMode = _voiceModeCombos[input].SelectedItem is VoiceMode vm ? vm : VoiceMode.Toggle;
+            var keyboardMode = _keyboardModeCombos[input].SelectedItem is KeyboardMode km ? km : KeyboardMode.Simple;
+
+            var original = _originalActions[input];
+            ButtonAction action;
+            if (kind == KindOf(original))
             {
-                ActionKind.Key => new KeyAction(param),
-                ActionKind.Mouse => new MouseAction(MouseButton.Left, MouseActionKind.Click),
-                ActionKind.Voice => new VoiceAction(VoiceMode.Toggle),
-                ActionKind.Keyboard => new KeyboardAction(KeyboardMode.Simple),
-                ActionKind.Launch => new LaunchAction(param),
-                _ => ButtonAction.None(),
-            };
+                // F11 fix: kind unchanged -- update the EXISTING action in place so
+                // values this row has no control for (e.g. KeyAction.Modifier)
+                // survive the save, instead of getting silently dropped by
+                // rebuilding a fresh default-valued instance every time.
+                action = original;
+                switch (action)
+                {
+                    case KeyAction k: k.KeyText = param; break;
+                    case MouseAction m: m.Button = mouseButton; m.Kind = mouseKind; break;
+                    case VoiceAction v: v.Mode = voiceMode; break;
+                    case KeyboardAction kb: kb.Mode = keyboardMode; break;
+                    case LaunchAction l: l.AppTarget = param; break;
+                }
+            }
+            else
+            {
+                action = kind switch
+                {
+                    ActionKind.Key => new KeyAction(param),
+                    ActionKind.Mouse => new MouseAction(mouseButton, mouseKind),
+                    ActionKind.Voice => new VoiceAction(voiceMode),
+                    ActionKind.Keyboard => new KeyboardAction(keyboardMode),
+                    ActionKind.Launch => new LaunchAction(param),
+                    _ => ButtonAction.None(),
+                };
+            }
             _profile.Mappings[input] = action;
         }
-        ProfileStore.Save(_profile);
+        // F10 fix: pass the profile's own name (desktop/browser/iptv) instead of
+        // relying on ProfileStore.Save's unrelated "profile" default parameter,
+        // which silently wrote to the wrong file.
+        ProfileStore.Save(_profile, _profile.Name);
 
         Close();
     }

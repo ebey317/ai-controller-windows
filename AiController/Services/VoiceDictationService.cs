@@ -143,8 +143,11 @@ public sealed class VoiceDictationService : IDisposable
 
         // Cancel any still-in-flight transcription from a previous take before
         // starting this one -- the closest equivalent of Thread.Abort without
-        // actually aborting a thread mid-operation.
+        // actually aborting a thread mid-operation. Dispose the cancelled source
+        // too: Cancel() alone leaked the CancellationTokenSource's handle every
+        // single take.
         _transcribeCts?.Cancel();
+        _transcribeCts?.Dispose();
         _transcribeCts = new CancellationTokenSource();
 
         try
@@ -159,6 +162,12 @@ public sealed class VoiceDictationService : IDisposable
                 var styled = TextStyles.Apply(transcript, mode);
                 InputInjector.GuardedType(_getTargetWindow(), styled);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // This take was superseded by a newer one starting before the network
+            // round-trip finished -- intentional, not a failure, so callers
+            // (ToggleAsync, PttController) must not see this as DictationFailed.
         }
         finally
         {
@@ -214,6 +223,7 @@ public sealed class VoiceDictationService : IDisposable
     public void Dispose()
     {
         _transcribeCts?.Cancel();
+        _transcribeCts?.Dispose();
         _waveIn?.Dispose();
         _writer?.Dispose();
         _http.Dispose();

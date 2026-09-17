@@ -25,6 +25,11 @@ public sealed class DriftCalibrator
     private const short DeadzoneRadius = 7849; // matches XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE
 
     private readonly Queue<(short x, short y)> _restHistory = new();
+    // Running sums -- Observe() used to call Queue.Average() over the whole
+    // window every single tick (an O(HistorySize) rescan 60 times a second for
+    // no reason); maintaining a running total makes each call O(1) instead.
+    private double _sumX;
+    private double _sumY;
     private double _centerX;
     private double _centerY;
 
@@ -34,10 +39,17 @@ public sealed class DriftCalibrator
         if (Math.Abs(rawX) > DeadzoneRadius || Math.Abs(rawY) > DeadzoneRadius) return;
 
         _restHistory.Enqueue((rawX, rawY));
-        if (_restHistory.Count > HistorySize) _restHistory.Dequeue();
+        _sumX += rawX;
+        _sumY += rawY;
+        if (_restHistory.Count > HistorySize)
+        {
+            var (oldX, oldY) = _restHistory.Dequeue();
+            _sumX -= oldX;
+            _sumY -= oldY;
+        }
 
-        _centerX = _restHistory.Average(p => p.x);
-        _centerY = _restHistory.Average(p => p.y);
+        _centerX = _sumX / _restHistory.Count;
+        _centerY = _sumY / _restHistory.Count;
     }
 
     /// <summary>Apply the learned center offset and deadzone to a raw sample,

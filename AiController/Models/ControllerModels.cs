@@ -130,6 +130,12 @@ public sealed class NullAction : ButtonAction
 /// ContextSwitcher: desktop/browser/IPTV each load their own named profile).</summary>
 public class ControllerProfile
 {
+    /// <summary>The name this profile was loaded under (see ProfileStore.Load /
+    /// ContextSwitcher: "desktop"/"browser"/"iptv") -- carried on the instance so a
+    /// later Save() call writes back to the SAME file it was read from, instead of
+    /// falling through to ProfileStore.Save's unrelated "profile" default.</summary>
+    public string Name { get; set; } = "profile";
+
     public Dictionary<ControllerInput, ButtonAction> Mappings { get; set; } = new()
     {
         [ControllerInput.ButtonA] = new MouseAction(MouseButton.Left, MouseActionKind.Click),

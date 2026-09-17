@@ -71,7 +71,7 @@ public partial class SlideKeyboard : Window
                 if (Enum.TryParse<TextStyleMode>(raw, ignoreCase: true, out var mode)) _mode = mode;
             }
         }
-        catch (IOException) { /* fall back to the default mode */ }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* fall back to the default mode */ }
     }
 
     private void SaveMode()
@@ -81,7 +81,7 @@ public partial class SlideKeyboard : Window
             AppPaths.EnsureExists();
             File.WriteAllText(AppPaths.PttModePath, _mode.ToString().ToLowerInvariant());
         }
-        catch (IOException) { /* best-effort -- mode just won't persist across restarts */ }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* best-effort -- mode just won't persist across restarts */ }
     }
 
     private void BuildModeBar()
@@ -145,7 +145,7 @@ public partial class SlideKeyboard : Window
                     for (var i = 0; i < Math.Min(PinCount, loaded.Count); i++) _pins[i] = loaded[i];
             }
         }
-        catch (Exception ex) when (ex is IOException or JsonException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
             // Corrupt or unreadable pins file -- fall back to empty slots.
         }
@@ -159,7 +159,7 @@ public partial class SlideKeyboard : Window
             AppPaths.EnsureExists();
             File.WriteAllText(AppPaths.PinnedSnippetsPath, JsonSerializer.Serialize(_pins));
         }
-        catch (IOException) { /* best-effort -- pins just won't persist across restarts */ }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* best-effort -- pins just won't persist across restarts */ }
     }
 
     private void BuildPinBar()
@@ -300,7 +300,10 @@ public partial class SlideKeyboard : Window
             if (KeyboardLayout.SpecialKeys.TryGetValue(key, out var vk))
                 InputInjector.GuardedKey(_focusTargetWindow, vk);
             else
-                InjectText(key);
+                // Single keystroke: font-mapping only, no emoji pipeline -- InjectText's
+                // full TextStyles.Apply would append a keyword/casual emoji to every
+                // letter typed instead of once per dictated phrase.
+                InputInjector.GuardedType(_focusTargetWindow, TextStyles.ApplyGlyphs(key, _mode));
         }
         catch (InputInjector.FocusLostException)
         {
@@ -308,8 +311,18 @@ public partial class SlideKeyboard : Window
         }
     }
 
-    /// <summary>Apply the active mode's style transform before injecting --
-    /// mirrors ptt_pynput.py applying PRO/BUBBLY/CASUAL/BOLD/BIG right before typing.</summary>
-    private void InjectText(string text) =>
-        InputInjector.GuardedType(_focusTargetWindow, TextStyles.Apply(text, _mode));
+    /// <summary>Apply the active mode's full style transform (including the emoji
+    /// pipeline) before injecting a whole pinned snippet -- mirrors ptt_pynput.py
+    /// applying PRO/BUBBLY/CASUAL/BOLD/BIG right before typing a dictated phrase.</summary>
+    private void InjectText(string text)
+    {
+        try
+        {
+            InputInjector.GuardedType(_focusTargetWindow, TextStyles.Apply(text, _mode));
+        }
+        catch (InputInjector.FocusLostException)
+        {
+            // Same contract as InjectKeyPressed: skip rather than fire blind.
+        }
+    }
 }

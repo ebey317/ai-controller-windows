@@ -32,10 +32,21 @@ public static class ConsentGate
         }
     }
 
-    public static void GrantConsent()
+    /// <summary>Returns true only if the consent record was actually written to disk.
+    /// A caller that ignored a failed write here would let the app proceed as if the
+    /// operator had consented, when in fact nothing was persisted.</summary>
+    public static bool GrantConsent()
     {
-        AppPaths.EnsureExists();
-        File.WriteAllText(AppPaths.ConsentPath, ConsentVersion);
+        try
+        {
+            AppPaths.EnsureExists();
+            File.WriteAllText(AppPaths.ConsentPath, ConsentVersion);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     public static void RevokeConsent()

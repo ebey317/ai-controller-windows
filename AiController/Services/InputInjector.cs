@@ -208,10 +208,31 @@ public static class InputInjector
     /// <summary>Synthesize a mouse button press of the given kind (click, double-click,
     /// down-only, up-only) at the current cursor position, verified the same way as
     /// GuardedType. Backs MouseAction bindings (W1's polymorphic action hierarchy).</summary>
+    /// <summary>
+    /// F9 fix: unlike GuardedType/GuardedKey (which tolerate an unreadable,
+    /// IntPtr.Zero foreground via FocusAcceptable/EnsureForeground -- a stray
+    /// keystroke into nothing is comparatively harmless), a mouse click fires at
+    /// whatever happens to be under the cursor. Firing blind into an unconfirmed
+    /// foreground could click something the operator never intended to touch, so
+    /// GuardedMouse requires an EXACT match with target -- no free pass for Zero,
+    /// only a bounded number of retries in case a legitimately-foreground window
+    /// is just slow to report itself.
+    /// </summary>
+    private static bool TryConfirmExactForeground(IntPtr target, int retries = 6, int delayMs = 40)
+    {
+        var current = GetForegroundWindow();
+        for (var i = 0; i < retries && current == IntPtr.Zero; i++)
+        {
+            Thread.Sleep(delayMs);
+            current = GetForegroundWindow();
+        }
+        return current == target;
+    }
+
     public static void GuardedMouse(IntPtr target, MouseButton button, MouseActionKind kind)
     {
-        if (!EnsureForeground(target))
-            throw new FocusLostException($"could not focus {target} before mouse {button}/{kind}");
+        if (!TryConfirmExactForeground(target))
+            throw new FocusLostException($"could not confirm exact foreground match for {target} before mouse {button}/{kind}");
 
         var (downFlag, upFlag) = button switch
         {

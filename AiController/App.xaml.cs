@@ -59,7 +59,7 @@ public partial class App : System.Windows.Application
         _keyboardWindow = new OnScreenKeyboardWindow();
         _slideKeyboardWindow = new SlideKeyboard();
         _legendOverlay = new LegendOverlay(desktopProfile);
-        _trayIcon = new TrayIconHost(desktopProfile);
+        _trayIcon = new TrayIconHost(desktopProfile, toggleLegend: () => _legendOverlay?.ToggleVisible());
 
         _controllerService = new ControllerInputService(
             desktopProfile,
@@ -77,6 +77,9 @@ public partial class App : System.Windows.Application
             _controllerService.ActiveProfile = profile;
             _legendOverlay.SetProfile(profile);
         };
+        // Subscribe above BEFORE starting the timer, so the very first poll tick
+        // can never fire before anyone is listening.
+        _contextSwitcher.Start();
     }
 
     private void HandlePress(ButtonAction action)

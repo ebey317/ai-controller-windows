@@ -25,9 +25,16 @@ public sealed class PttController
 {
     private const int DebounceMs = 250;
 
+    // F5 fix: a release arriving before the trigger has been held this long is
+    // controller chatter, not an intentional tap -- reusing DebounceMs since
+    // that's already the threshold this class uses to distinguish a deliberate
+    // gesture from bounce on the same input.
+    private const int MinHoldMs = DebounceMs;
+
     private readonly VoiceDictationService _voice;
     private readonly Action<Exception>? _onError;
     private long _lastPressTicks = long.MinValue;
+    private long _holdStartTicks;
     private bool _isHeld;
 
     public PttController(VoiceDictationService voice, Action<Exception>? onError = null)
@@ -47,6 +54,7 @@ public sealed class PttController
             if (mode == VoiceMode.PushToTalk)
             {
                 _isHeld = true;
+                _holdStartTicks = now;
                 await _voice.StartAsync();
             }
             else
@@ -59,6 +67,13 @@ public sealed class PttController
     public void OnRelease(VoiceMode mode)
     {
         if (mode != VoiceMode.PushToTalk || !_isHeld) return;
+
+        // A release this soon after the press is chatter, not a deliberate
+        // tap-and-release -- ignore it entirely: don't transcribe, and don't
+        // clear _isHeld, so the eventual real release still fires normally
+        // instead of this bogus one consuming the held state.
+        if (Environment.TickCount64 - _holdStartTicks < MinHoldMs) return;
+
         _isHeld = false;
         _ = RunAsync(() => _voice.StopAndTranscribeAsync());
     }
