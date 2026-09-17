@@ -40,6 +40,9 @@ public partial class App : System.Windows.Application
             }
         }
 
+        // Apply the customer's saved emoji skin tone before anything can type.
+        TextStyles.SetSkinTone(SkinToneStore.Load());
+
         var desktopProfile = ProfileStore.Load("desktop");
         var browserProfile = ProfileStore.Load("browser");
         var iptvProfile = ProfileStore.Load("iptv");

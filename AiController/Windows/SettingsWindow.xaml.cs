@@ -36,6 +36,22 @@ public partial class SettingsWindow : Window
         ApiKeyBox.Text = TryReadApiKey();
         AutostartCheckBox.IsChecked = AutostartService.IsEnabled();
 
+        // Emoji skin tone picker -- every customer picks their own. The combo
+        // shows a ✌ emoji rendered in each tone as its own label, so the
+        // choice previews exactly what dictation will type.
+        SkinToneBox.ItemsSource = new[]
+        {
+            new SkinToneOption(EmojiSkinTone.Neutral,   "✌️  Neutral"),
+            new SkinToneOption(EmojiSkinTone.Light,     "✌🏻  Light"),
+            new SkinToneOption(EmojiSkinTone.MediumLight, "✌🏼  Medium-light"),
+            new SkinToneOption(EmojiSkinTone.Medium,    "✌🏽  Medium"),
+            new SkinToneOption(EmojiSkinTone.MediumDark, "✌🏾  Medium-dark"),
+            new SkinToneOption(EmojiSkinTone.Dark,      "✌🏿  Dark (default)"),
+        };
+        SkinToneBox.DisplayMemberPath = nameof(SkinToneOption.Label);
+        SkinToneBox.SelectedValuePath = nameof(SkinToneOption.Tone);
+        SkinToneBox.SelectedValue = SkinToneStore.Load();
+
         var rows = new StackPanel();
         foreach (var input in Enum.GetValues<ControllerInput>())
         {
@@ -90,12 +106,20 @@ public partial class SettingsWindow : Window
     private static string TryReadApiKey() =>
         File.Exists(AppPaths.GroqApiKeyPath) ? File.ReadAllText(AppPaths.GroqApiKeyPath).Trim() : "";
 
+    /// <summary>Combo-box item for the skin-tone picker: the tone enum plus a
+    /// label that previews the tone on a ✌ emoji.</summary>
+    public record SkinToneOption(EmojiSkinTone Tone, string Label);
+
     private void Save_Click(object sender, RoutedEventArgs e)
     {
         AppPaths.EnsureExists();
         File.WriteAllText(AppPaths.GroqApiKeyPath, ApiKeyBox.Text.Trim());
 
         AutostartService.SetEnabled(AutostartCheckBox.IsChecked == true);
+
+        var tone = SkinToneBox.SelectedValue is EmojiSkinTone t ? t : EmojiSkinTone.Dark;
+        SkinToneStore.Save(tone);
+        TextStyles.SetSkinTone(tone);
 
         foreach (var (input, combo) in _mappingCombos)
         {

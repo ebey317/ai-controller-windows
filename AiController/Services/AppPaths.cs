@@ -20,6 +20,7 @@ public static class AppPaths
     public static string GroqApiKeyPath => Path.Combine(ConfigDir, "groq_api_key.txt");
     public static string PinnedSnippetsPath => Path.Combine(ConfigDir, "pinned_snippets.json");
     public static string PttModePath => Path.Combine(ConfigDir, "ptt_mode");
+    public static string SkinTonePath => Path.Combine(ConfigDir, "skin_tone");
     public static string LogsDir => Path.Combine(ConfigDir, "logs");
 
     public static string ProfilePath(string name) => Path.Combine(ConfigDir, $"profile.{name}.json");

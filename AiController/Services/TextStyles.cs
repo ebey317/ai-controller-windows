@@ -10,10 +10,16 @@ namespace AiController.Services;
 /// and bold-Fraktur ("Old English") Unicode respectively.</summary>
 public enum TextStyleMode { Pro, Bubbly, Casual, Bold, Big }
 
+/// <summary>Selectable emoji skin tone (Fitzpatrick scale). Neutral renders
+/// the base emoji with no modifier; the rest append the matching U+1F3Fx
+/// modifier to every hand/person emoji, exactly once per emoji. Default is
+/// Dark — the Linux build's signature look.</summary>
+public enum EmojiSkinTone { Neutral, Light, MediumLight, Medium, MediumDark, Dark }
+
 /// <summary>
 /// Unicode font-mapping helpers, ported field-for-field from text_styles.py's
 /// _CURSIVE_MAP/_BOLD_MAP/_FRAKTUR_MAP, plus ptt_pynput.py's emoji pipeline
-/// (keyword-emoji insertion, dark skin-tone modifiers, casual emoji boost) --
+/// (keyword-emoji insertion, selectable skin-tone modifiers, casual emoji boost) --
 /// the complete _transform_text feature set, since voice transcripts are
 /// styled here too, not just the on-screen keyboard's mode chips.
 /// </summary>
@@ -63,9 +69,31 @@ public static class TextStyles
 
     // ---- ptt_pynput.py's emoji pipeline, ported for voice-transcript styling ----
 
-    // Fitzpatrick type-6 (dark) skin tone modifier -- matches the Linux build's
-    // _SKIN_TONE, applied to every hand/person emoji in the keyword map.
-    private const string SkinTone = "\U0001F3FF";
+    // Active skin-tone modifier. Default Dark = the Linux build's signature
+    // look; every customer can switch in Settings (SetSkinTone). The modifier
+    // is applied exactly once per emoji at table-build time.
+    private static string _skinToneModifier = "\U0001F3FF";
+    private static EmojiSkinTone _currentTone = EmojiSkinTone.Dark;
+
+    public static EmojiSkinTone CurrentSkinTone => _currentTone;
+
+    /// <summary>Rebuild the emoji tables with the selected tone. Thread-safe by
+    /// reference swap: Apply() reads the tables via the properties below.</summary>
+    public static void SetSkinTone(EmojiSkinTone tone)
+    {
+        _currentTone = tone;
+        _skinToneModifier = tone switch
+        {
+            EmojiSkinTone.Light => "\U0001F3FB",
+            EmojiSkinTone.MediumLight => "\U0001F3FC",
+            EmojiSkinTone.Medium => "\U0001F3FD",
+            EmojiSkinTone.MediumDark => "\U0001F3FE",
+            EmojiSkinTone.Dark => "\U0001F3FF",
+            _ => "",
+        };
+        _emojiMap = BuildTonedEmojiMap();
+        _casualEmojis = BuildTonedCasualEmojis();
+    }
 
     // ptt_pynput.py's _TONEABLE_BASES: emoji codepoints that accept the modifier.
     private static readonly HashSet<string> ToneableBases = new()
@@ -100,7 +128,7 @@ public static class TextStyles
             var cpStr = char.ConvertFromUtf32(codepoint);
             if (ToneableBases.Contains(cpStr))
             {
-                sb.Append(cpStr).Append(SkinTone);
+                sb.Append(cpStr).Append(_skinToneModifier);
                 i += isHighSurrogate ? 2 : 1;
                 // Keep any emoji-variation selector after the tone.
                 if (i < emoji.Length && emoji[i] == '\uFE0F')
@@ -121,80 +149,102 @@ public static class TextStyles
         return sb.ToString();
     }
 
-    private static readonly Dictionary<string, string> EmojiMap = BuildTonedEmojiMap();
+    private static Dictionary<string, string> _emojiMap = BuildTonedEmojiMap();
+    private static Dictionary<string, string> EmojiMap => _emojiMap;
 
     // ptt_pynput.py applies _apply_skin_tone to every value at import time
-    // (_EMOJI_MAP = {k: _apply_skin_tone(v) for ...}); the static ctor below
+    // (_EMOJI_MAP = {k: _apply_skin_tone(v) for ...}); the builder below
     // does the same here, so every hand/person emoji carries the dark tone.
-    private static Dictionary<string, string> BuildTonedEmojiMap()
+    private static Dictionary<string, string> BuildTonedEmojiMap() =>
+        BuildRawEmojiEntries().ToDictionary(kv => kv.Key, kv => ApplySkinTone(kv.Value));
+
+    /// <summary>Single source of truth for the keyword map, in the exact
+    /// declaration order of ptt_pynput.py's _EMOJI_MAP (verified entry-for-
+    /// entry against the live file). Order matters: Python's stable sort in
+    /// _add_emojis preserves declaration order among equal-length keywords,
+    /// so the first-declared keyword wins a length tie.</summary>
+    private static List<(string Key, string Value)> BuildRawEmojiEntries() => new()
     {
-        var raw = new Dictionary<string, string>
-        {
-            // emotions
-            ["happy"] = "happy 😊", ["sad"] = "sad 😢", ["love"] = "love ❤️", ["hate"] = "hate 😠",
-            ["heart"] = "heart ❤️", ["excited"] = "excited 🤩", ["bored"] = "bored 😐",
-            ["angry"] = "angry 😠", ["mad"] = "mad 🤬", ["tired"] = "tired 😴", ["sleepy"] = "sleepy 😴",
-            ["sick"] = "sick 🤒", ["surprised"] = "surprised 😲", ["shocked"] = "shocked 😱",
-            ["confused"] = "confused 😕", ["worried"] = "worried 😟", ["proud"] = "proud 🥹",
-            ["embarrassed"] = "embarrassed 😳", ["scared"] = "scared 😨", ["lonely"] = "lonely 🥺",
-            // reactions
-            ["lol"] = "lol 😂", ["haha"] = "haha 😂", ["lmao"] = "lmao 🤣", ["wow"] = "wow 🤯",
-            ["omg"] = "omg 😱", ["yay"] = "yay 🎉", ["woo"] = "woo 🥳", ["yikes"] = "yikes 😬",
-            ["ugh"] = "ugh 😩", ["meh"] = "meh 😒", ["hm"] = "hm 🤔", ["hmm"] = "hmm 🤔",
-            // greetings / goodbyes
-            ["hello"] = "hello 👋🏿", ["hi"] = "hi 👋🏿", ["hey"] = "hey 👋🏿",
-            ["goodbye"] = "goodbye 👋🏿", ["bye"] = "bye 👋🏿", ["see you"] = "see you 👋🏿",
-            ["good morning"] = "good morning 🌅", ["good night"] = "good night 🌙",
-            ["thank you"] = "thank you 🙏🏿", ["thanks"] = "thanks 🙏🏿", ["please"] = "please 🥺",
-            ["sorry"] = "sorry 😔", ["apologize"] = "apologize 🙇🏿",
-            // quality
-            ["fire"] = "fire 🔥", ["cool"] = "cool 😎", ["nice"] = "nice ✨", ["great"] = "great 🎉",
-            ["awesome"] = "awesome 🤩", ["amazing"] = "amazing 🤩", ["perfect"] = "perfect 💯",
-            ["good"] = "good 👍🏿", ["bad"] = "bad 👎🏿", ["ok"] = "ok 👌🏿", ["okay"] = "okay 👌🏿",
-            ["yes"] = "yes ✅", ["no"] = "no ❌", ["maybe"] = "maybe 🤷🏿", ["definitely"] = "definitely 💯",
-            ["check"] = "check ✅", ["done"] = "done ✅", ["finished"] = "finished ✅",
-            // food / drink
-            ["hungry"] = "hungry 🍔", ["coffee"] = "coffee ☕", ["beer"] = "beer 🍺", ["wine"] = "wine 🍷",
-            ["pizza"] = "pizza 🍕", ["taco"] = "taco 🌮", ["burger"] = "burger 🍔", ["fries"] = "fries 🍟",
-            ["cake"] = "cake 🍰", ["ice cream"] = "ice cream 🍦", ["chocolate"] = "chocolate 🍫",
-            ["water"] = "water 💧", ["tea"] = "tea 🍵", ["breakfast"] = "breakfast 🍳", ["dinner"] = "dinner 🍽️",
-            // objects / tech
-            ["phone"] = "phone 📱", ["computer"] = "computer 💻", ["laptop"] = "laptop 💻",
-            ["game"] = "game 🎮", ["controller"] = "controller 🎮", ["music"] = "music 🎵",
-            ["book"] = "book 📚", ["movie"] = "movie 🎬", ["tv"] = "tv 📺", ["money"] = "money 💰",
-            ["idea"] = "idea 💡", ["light"] = "light 💡", ["warning"] = "warning ⚠️", ["rocket"] = "rocket 🚀",
-            ["time"] = "time ⏰", ["date"] = "date 📅", ["mail"] = "mail 📧", ["email"] = "email 📧",
-            // nature / animals
-            ["sun"] = "sun ☀️", ["moon"] = "moon 🌙", ["star"] = "star ⭐", ["rain"] = "rain 🌧️",
-            ["snow"] = "snow ❄️", ["ghost"] = "ghost 👻", ["skull"] = "skull 💀",
-            ["cat"] = "cat 🐱", ["dog"] = "dog 🐶", ["bird"] = "bird 🐦", ["fish"] = "fish 🐟",
-            // events
-            ["party"] = "party 🎉", ["birthday"] = "birthday 🎂", ["congratulations"] = "congratulations 🎉",
-            ["weekend"] = "weekend 🎉", ["work"] = "work 💼", ["job"] = "job 💼",
-        };
+        // emotions
+        ("happy", "happy 😊"), ("sad", "sad 😢"), ("love", "love ❤️"), ("hate", "hate 😠"),
+        ("heart", "heart ❤️"), ("excited", "excited 🤩"), ("bored", "bored 😐"),
+        ("angry", "angry 😠"), ("mad", "mad 🤬"), ("tired", "tired 😴"), ("sleepy", "sleepy 😴"),
+        ("sick", "sick 🤒"), ("surprised", "surprised 😲"), ("shocked", "shocked 😱"),
+        ("confused", "confused 😕"), ("worried", "worried 😟"), ("proud", "proud 🥹"),
+        ("embarrassed", "embarrassed 😳"), ("scared", "scared 😨"), ("lonely", "lonely 🥺"),
+        // reactions
+        ("lol", "lol 😂"), ("haha", "haha 😂"), ("lmao", "lmao 🤣"), ("wow", "wow 🤯"),
+        ("omg", "omg 😱"), ("yay", "yay 🎉"), ("woo", "woo 🥳"), ("yikes", "yikes 😬"),
+        ("ugh", "ugh 😩"), ("meh", "meh 😒"), ("hm", "hm 🤔"), ("hmm", "hmm 🤔"),
+        // greetings / goodbyes (hand emojis are tone-free bases here; the
+        // selected modifier is applied at table-build time)
+        ("hello", "hello 👋"), ("hi", "hi 👋"), ("hey", "hey 👋"),
+        ("goodbye", "goodbye 👋"), ("bye", "bye 👋"), ("see you", "see you 👋"),
+        ("good morning", "good morning 🌅"), ("good night", "good night 🌙"),
+        ("thank you", "thank you 🙏"), ("thanks", "thanks 🙏"), ("please", "please 🥺"),
+        ("sorry", "sorry 😔"), ("apologize", "apologize 🙇"),
+        // quality
+        ("fire", "fire 🔥"), ("cool", "cool 😎"), ("nice", "nice ✨"), ("great", "great 🎉"),
+        ("awesome", "awesome 🤩"), ("amazing", "amazing 🤩"), ("perfect", "perfect 💯"),
+        ("good", "good 👍"), ("bad", "bad 👎"), ("ok", "ok 👌"), ("okay", "okay 👌"),
+        ("yes", "yes ✅"), ("no", "no ❌"), ("maybe", "maybe 🤷"), ("definitely", "definitely 💯"),
+        ("check", "check ✅"), ("done", "done ✅"), ("finished", "finished ✅"),
+        // food / drink
+        ("hungry", "hungry 🍔"), ("coffee", "coffee ☕"), ("beer", "beer 🍺"), ("wine", "wine 🍷"),
+        ("pizza", "pizza 🍕"), ("taco", "taco 🌮"), ("burger", "burger 🍔"), ("fries", "fries 🍟"),
+        ("cake", "cake 🍰"), ("ice cream", "ice cream 🍦"), ("chocolate", "chocolate 🍫"),
+        ("water", "water 💧"), ("tea", "tea 🍵"), ("breakfast", "breakfast 🍳"), ("dinner", "dinner 🍽️"),
+        // objects / tech
+        ("phone", "phone 📱"), ("computer", "computer 💻"), ("laptop", "laptop 💻"),
+        ("game", "game 🎮"), ("controller", "controller 🎮"), ("music", "music 🎵"),
+        ("book", "book 📚"), ("movie", "movie 🎬"), ("tv", "tv 📺"), ("money", "money 💰"),
+        ("idea", "idea 💡"), ("light", "light 💡"), ("warning", "warning ⚠️"), ("rocket", "rocket 🚀"),
+        ("time", "time ⏰"), ("date", "date 📅"), ("mail", "mail 📧"), ("email", "email 📧"),
+        // nature / animals
+        ("sun", "sun ☀️"), ("moon", "moon 🌙"), ("star", "star ⭐"), ("rain", "rain 🌧️"),
+        ("snow", "snow ❄️"), ("ghost", "ghost 👻"), ("skull", "skull 💀"),
+        ("cat", "cat 🐱"), ("dog", "dog 🐶"), ("bird", "bird 🐦"), ("fish", "fish 🐟"),
+        // events
+        ("party", "party 🎉"), ("birthday", "birthday 🎂"), ("congratulations", "congratulations 🎉"),
+        ("weekend", "weekend 🎉"), ("work", "work 💼"), ("job", "job 💼"),
+    };
 
-        return raw.ToDictionary(kv => kv.Key, kv => ApplySkinTone(kv.Value));
-    }
-
-    private static readonly string[] CasualEmojis = BuildTonedCasualEmojis();
+    private static string[] _casualEmojis = BuildTonedCasualEmojis();
+    private static string[] CasualEmojis => _casualEmojis;
 
     // Linux: _CASUAL_EMOJIS = [_apply_skin_tone(e) for e in _CASUAL_EMOJIS]
     private static string[] BuildTonedCasualEmojis()
     {
         var raw = new[]
         {
-        "\U0001F44B\U0001F3FF", // 👋🏿
-        "☕", "😊", "\u270C\uFE0F\U0001F3FF", "\U0001F64C\U0001F3FF", "\U0001F919\U0001F3FF",
+        // Tone-free bases: the active modifier is inserted at build time, so
+        // Neutral renders the plain emoji and every other selection applies
+        // exactly one modifier. ✌ keeps the standard U+270C U+FE0F shape;
+        // ApplySkinTone inserts the modifier between base and FE0F, which
+        // reproduces the Linux literal's byte order for the dark default.
+        "\U0001F44B", "☕", "😊", "\u270C\uFE0F", "\U0001F64C", "\U0001F919",
         "😎", "✨", "\U0001F4AF", "\U0001F525", "\U0001FAE1", // 💯 🔥 🫡
         };
         return raw.Select(ApplySkinTone).ToArray();
     }
 
+    // Declaration-ordered keys: ptt_pynput.py's _add_emojis iterates
+    // sorted(_EMOJI_MAP, key=len, reverse=True) -- Python's stable sort keeps
+    // insertion order among equal-length keys, so the first-declared keyword
+    // wins a tie. Dictionary<string,T> enumeration order is unspecified in
+    // .NET, so AddKeywordEmoji walks THIS list instead of the map's keys.
+    private static readonly List<string> EmojiKeyOrder = BuildEmojiKeyOrder();
+
+    private static List<string> BuildEmojiKeyOrder() => BuildRawEmojiEntries().Select(kv => kv.Key).ToList();
+
     private static string AddKeywordEmoji(string text)
     {
         var lowered = text.ToLowerInvariant();
-        // Longer phrases first so 'thank you' beats 'thanks' -- same as Linux.
-        foreach (var phrase in EmojiMap.Keys.OrderByDescending(k => k.Length))
+        // ptt_pynput.py: for phrase in sorted(_EMOJI_MAP, key=len, reverse=True)
+        // -- Python's sorted() is stable, so equal-length keywords keep
+        // declaration order. LINQ's OrderByDescending is stable too, and
+        // EmojiKeyOrder holds the declaration order from the live file.
+        foreach (var phrase in EmojiKeyOrder.OrderByDescending(k => k.Length))
         {
             if (lowered.Contains(phrase))
             {
