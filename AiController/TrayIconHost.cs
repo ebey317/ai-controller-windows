@@ -16,11 +16,16 @@ public sealed class TrayIconHost : IDisposable
     private readonly NotifyIcon _icon;
     private readonly ControllerProfile _profile;
 
-    public TrayIconHost(ControllerProfile profile)
+    /// <summary>F13 fix: LegendOverlay had no user-invokable activation path at all --
+    /// ToggleVisible() existed but nothing ever called it. The tray menu is the
+    /// smallest surface to wire up (no new controller binding, no profile schema
+    /// change) without touching existing button-mapping behavior.</summary>
+    public TrayIconHost(ControllerProfile profile, Action toggleLegend)
     {
         _profile = profile;
         var menu = new ContextMenuStrip();
         menu.Items.Add("Settings", null, (_, _) => OpenSettings());
+        menu.Items.Add("Toggle Legend", null, (_, _) => toggleLegend());
         menu.Items.Add("Exit", null, (_, _) => System.Windows.Application.Current.Shutdown());
 
         _icon = new NotifyIcon

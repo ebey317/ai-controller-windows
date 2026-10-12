@@ -1,0 +1,12 @@
+<Window x:Class="AiController.Windows.LegendOverlay"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{StaticResource PanelWindowStyle}"
+        Title="AI Controller Legend"
+        SizeToContent="WidthAndHeight"
+        ShowActivated="False"
+        WindowStartupLocation="Manual">
+    <Border Style="{StaticResource PanelBorderStyle}" Padding="10">
+        <StackPanel x:Name="LegendItems" Orientation="Horizontal" />
+    </Border>
+</Window>

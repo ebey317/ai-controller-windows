@@ -1,0 +1,18 @@
+<Window x:Class="AiController.Windows.SlideKeyboard"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{StaticResource PanelWindowStyle}"
+        Title="AI Controller Slide Keyboard"
+        Width="900" Height="380"
+        ShowActivated="False"
+        WindowStartupLocation="CenterScreen">
+    <Border Style="{StaticResource PanelBorderStyle}">
+        <StackPanel>
+            <StackPanel x:Name="ModeBar" Orientation="Horizontal" Margin="0,0,0,8" HorizontalAlignment="Center" />
+            <StackPanel x:Name="PinBar" Orientation="Horizontal" Margin="0,0,0,8" HorizontalAlignment="Center" />
+            <TextBox x:Name="EditBox" Visibility="Collapsed" IsReadOnly="True"
+                     Style="{StaticResource AccentTextBoxStyle}" Margin="0,0,0,8" />
+            <StackPanel x:Name="KeyRows" />
+        </StackPanel>
+    </Border>
+</Window>

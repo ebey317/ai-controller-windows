@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Style="{StaticResource PanelWindowStyle}"
         Title="AI Controller Settings"
-        Width="480" Height="560"
+        Width="720" Height="560"
         WindowStartupLocation="CenterScreen"
         ShowInTaskbar="True">
     <Border Style="{StaticResource PanelBorderStyle}">
@@ -17,9 +17,12 @@
             <CheckBox x:Name="AutostartCheckBox" Content="Start AI Controller when Windows starts"
                       Foreground="{StaticResource TextBrush}" Margin="0,0,0,16" />
 
+            <TextBlock Text="Emoji skin tone" Foreground="{StaticResource TextBrush}" Margin="0,0,0,4" />
+            <ComboBox x:Name="SkinToneBox" Width="200" HorizontalAlignment="Left" Margin="0,0,0,16" />
+
             <TextBlock Text="Button mappings" Foreground="{StaticResource AccentBrush}"
                        FontWeight="Bold" Margin="0,0,0,8" />
-            <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="240">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" MaxHeight="240">
                 <ContentControl x:Name="MappingsList" />
             </ScrollViewer>
 
