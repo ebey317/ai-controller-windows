@@ -45,3 +45,59 @@ jobs:
         echo "- Configuration: Release" >> $env:GITHUB_STEP_SUMMARY
         echo "- Warnings as errors: on" >> $env:GITHUB_STEP_SUMMARY
         echo "- Format check: enforced" >> $env:GITHUB_STEP_SUMMARY
+
+  smoke-test:
+    runs-on: windows-latest
+    needs: build
+    defaults:
+      run:
+        working-directory: AiController
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Publish for smoke test
+      run: dotnet publish AiController.csproj -c Release -o ./publish-smoke
+
+    - name: Launch app and verify it stays alive
+      shell: pwsh
+      run: |
+        $exe = Join-Path (Get-Location) "publish-smoke\AiController.exe"
+        if (-not (Test-Path $exe)) { Write-Error "EXE not found: $exe"; exit 1 }
+        Write-Host "Launching $exe ..."
+        $p = Start-Process -FilePath $exe -PassThru
+        Write-Host "Launched PID $($p.Id); waiting 20s for startup crashes ..."
+        Start-Sleep -Seconds 20
+        $p.Refresh()
+        if ($p.HasExited) {
+          Write-Host "APP EXITED within 20s — exit code $($p.ExitCode)"
+          Write-Host "--- Recent Application event-log errors ---"
+          Get-WinEvent -LogName Application -MaxEvents 50 -ErrorAction SilentlyContinue |
+            Where-Object { $_.LevelDisplayName -eq "Error" -and $_.TimeCreated -gt (Get-Date).AddMinutes(-5) } |
+            Select-Object TimeCreated, ProviderName, Id, Message |
+            Format-List | Out-String | Write-Host
+          Write-Error "Smoke test FAILED: app did not stay alive"
+          exit 1
+        }
+        Write-Host "App still alive after 20s (PID $($p.Id)) — no startup crash"
+        $p.CloseMainWindow() | Out-Null
+        Start-Sleep -Seconds 5
+        $p.Refresh()
+        if (-not $p.HasExited) {
+          Write-Host "CloseMainWindow did not exit the app; killing PID $($p.Id)"
+          $p.Kill()
+        }
+        Write-Host "Smoke test PASSED"
+
+    - name: Smoke test summary
+      if: always()
+      run: |
+        echo "## Windows runtime smoke test" >> $env:GITHUB_STEP_SUMMARY
+        echo "- App launched on windows-latest, alive after 20s = no startup crash" >> $env:GITHUB_STEP_SUMMARY
+        echo "- Note: GUI not interacted with, no controller/mic on runner" >> $env:GITHUB_STEP_SUMMARY
