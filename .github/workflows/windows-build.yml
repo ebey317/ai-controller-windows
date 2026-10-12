@@ -1,0 +1,47 @@
+name: Windows Build
+
+on:
+  push:
+    branches: [ master, claude-takeover ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: AiController
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restore
+      run: dotnet restore AiController.csproj
+
+    - name: Build Release (warnings as errors)
+      run: dotnet build AiController.csproj -c Release --no-restore /p:TreatWarningsAsErrors=true
+
+    - name: Install dotnet-format
+      run: dotnet tool install -g dotnet-format
+
+    - name: Verify formatting (no changes allowed)
+      run: dotnet format AiController.csproj --verify-no-changes --verbosity diagnostic
+
+    - name: Publish self-contained (smoke)
+      run: dotnet publish AiController.csproj -c Release --no-build -o ./publish-smoke
+
+    - name: Build summary
+      if: always()
+      run: |
+        echo "## Windows build result" >> $env:GITHUB_STEP_SUMMARY
+        echo "- Configuration: Release" >> $env:GITHUB_STEP_SUMMARY
+        echo "- Warnings as errors: on" >> $env:GITHUB_STEP_SUMMARY
+        echo "- Format check: enforced" >> $env:GITHUB_STEP_SUMMARY
