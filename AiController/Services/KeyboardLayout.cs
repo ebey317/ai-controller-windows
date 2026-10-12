@@ -20,8 +20,15 @@ public static class KeyboardLayout
 
     public static readonly Dictionary<string, ushort> SpecialKeys = new()
     {
-        ["Esc"] = VK_ESCAPE, ["Bksp"] = VK_BACK, ["Tab"] = VK_TAB, ["Enter"] = VK_RETURN,
-        ["Space"] = VK_SPACE, ["Left"] = VK_LEFT, ["Right"] = VK_RIGHT, ["Up"] = VK_UP, ["Down"] = VK_DOWN,
+        ["Esc"] = VK_ESCAPE,
+        ["Bksp"] = VK_BACK,
+        ["Tab"] = VK_TAB,
+        ["Enter"] = VK_RETURN,
+        ["Space"] = VK_SPACE,
+        ["Left"] = VK_LEFT,
+        ["Right"] = VK_RIGHT,
+        ["Up"] = VK_UP,
+        ["Down"] = VK_DOWN,
     };
 
     public static readonly string[][] RowsLower =
